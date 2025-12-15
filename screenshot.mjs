@@ -45,9 +45,11 @@ async function takeScrollingScreenshots(page, device, outputDir) {
   const screenshots = [];
   let scrollPosition = 0;
   let index = 0;
+  let previousActualScroll = -1;
 
   const totalHeight = await page.evaluate(() => document.body.scrollHeight);
   const viewportHeight = await page.evaluate(() => window.innerHeight);
+  const minScrollDelta = viewportHeight * 0.15; // 15% of viewport
 
   console.log(`  Total page height: ${totalHeight}px`);
   console.log(`  Viewport height: ${viewportHeight}px`);
@@ -56,13 +58,23 @@ async function takeScrollingScreenshots(page, device, outputDir) {
     await page.evaluate((y) => window.scrollTo(0, y), scrollPosition);
     await page.waitForTimeout(config.scrollDelay);
 
+    // Get actual scroll position (browser limits it to max scrollable area)
+    const actualScroll = await page.evaluate(() => window.scrollY);
+
+    // Skip if scroll moved less than 15% of viewport (avoid duplicate screenshots)
+    if (previousActualScroll >= 0 && (actualScroll - previousActualScroll) < minScrollDelta) {
+      console.log(`  Skipped: scroll moved only ${actualScroll - previousActualScroll}px (<${Math.round(minScrollDelta)}px threshold)`);
+      break;
+    }
+
     const filename = `${device}_${String(index).padStart(3, '0')}.png`;
     const filepath = `${outputDir}/${filename}`;
 
     await page.screenshot({ path: filepath });
     screenshots.push(filepath);
-    console.log(`  Captured: ${filename} (scroll: ${scrollPosition}px)`);
+    console.log(`  Captured: ${filename} (scroll: ${actualScroll}px)`);
 
+    previousActualScroll = actualScroll;
     index++;
     scrollPosition += config.scrollStep;
   }
